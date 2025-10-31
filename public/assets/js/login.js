@@ -4,7 +4,7 @@ import { Database } from './database-auth.js';
 document.addEventListener('DOMContentLoaded', function() {
     const loginForm = document.querySelector('.login-form');
     const db = new Database(); // Database class’ından bağlantı
-
+    console.log("login")
     if (loginForm) {
         loginForm.addEventListener('submit', async function(e) {
             e.preventDefault();
