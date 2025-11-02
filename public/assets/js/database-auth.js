@@ -6,7 +6,7 @@ export class Database {
     constructor() {
         this.supabase = createClient(
             'https://jncqzwnqutwhuvkekrig.supabase.co',
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuY3F6d25xdXR3aHV2a2VrcmlnIiwicm9sZSI6ImF0IiwiaWF0IjoxNzYwNDU0ODUyLCJleHAiOjIwNzYwMzA4NTJ9.-tI6UgIjJ6Yg8oHDuyhDa4AmerI1c3BAzxzy_1g9Txs'
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuY3F6d25xdXR3aHV2a2VrcmlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA0NTQ4NTIsImV4cCI6MjA3NjAzMDg1Mn0.-tI6UgIjJ6Yg8oHDuyhDa4AmerI1c3BAzxzy_1g9Txs'
         );
     }
 
@@ -29,99 +29,107 @@ export class Database {
     }
 
     async getFriends(userId) {
-        // 1️⃣ Önce arkadaşlık ilişkilerini çek
-        const { data, error } = await this.supabase
-            .from('friends')
-            .select('*')
-            .or(`user_id1.eq.${userId},user_id2.eq.${userId}`);
+        try {
+            if (!userId) {
+                console.error('getFriends: userId undefined!');
+                return [];
+            }
 
-        if (error) {
-            console.error('Arkadaşlar alınırken hata:', error.message);
+            console.log('getFriends çağrıldı, userId:', userId);
+
+            const { data: relations, error: relError } = await this.supabase
+                .from('friends_list')
+                .select('*')
+                .or(`id_one.eq."${userId}",id_two.eq."${userId}"`);
+
+            if (relError) {
+                console.error('Arkadaşlık verileri alınamadı:', relError.message);
+                return [];
+            }
+
+            if (!relations || relations.length === 0) {
+                console.log('Hiç arkadaşlık kaydı yok.');
+                return [];
+            }
+
+            const friendIds = [];
+
+            relations.forEach(f => {
+                const idOne = f.id_one.trim().toLowerCase();
+                const idTwo = f.id_two.trim().toLowerCase();
+                const myId = userId.trim().toLowerCase();
+
+                if (idOne === myId) {
+                    friendIds.push(f.id_two);
+                } else if (idTwo === myId) {
+                    friendIds.push(f.id_one);
+                } else {
+                    console.warn('Eşleşmeyen kayıt:', f);
+                }
+            });
+
+            if (friendIds.length === 0) {
+                console.warn('Hiç geçerli arkadaş ID’si bulunamadı.');
+                return [];
+            }
+
+            console.log('Arkadaş ID’leri:', friendIds);
+
+            const { data: friendsData, error: userError } = await this.supabase
+                .from('users')
+                .select('*')
+                .in('id', friendIds);
+
+            if (userError) {
+                console.error('Arkadaş bilgileri alınamadı:', userError.message);
+                return [];
+            }
+
+            console.log('Arkadaş bilgileri:', friendsData);
+            return friendsData;
+        } catch (err) {
+            console.error('getFriends beklenmeyen hata:', err);
             return [];
         }
+    }
 
-        // 2️⃣ Kullanıcının arkadaş ID’lerini bul
-        const friendIds = data.map(f =>
-            f.user_id1 === userId ? f.user_id2 : f.user_id1
-        );
+    async getMessages(currentUserId, friendId) {
+        try {
+            const { data, error } = await this.supabase
+                .from('messages')
+                .select('*')
+                .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUserId})`)
+                .order('sent_at', { ascending: true });
 
-        if (friendIds.length === 0) return [];
+            if (error) {
+                console.error("Mesajlar alınamadı:", error.message);
+                return [];
+            }
 
-        // 3️⃣ Arkadaşların bilgilerini users tablosundan çek
-        const { data: friendsData, error: userError } = await this.supabase
+            return data;
+        } catch (err) {
+            console.error("Beklenmeyen hata (getMessages):", err);
+            return [];
+        }
+    }
+
+    async getUserById(userId) {
+        if (!userId) {
+            console.error("getUserById: userId eksik!");
+            return null;
+        }
+
+        const { data, error } = await this.supabase
             .from('users')
             .select('*')
-            .in('id', friendIds);
+            .eq('id', userId)
+            .single(); // sadece tek bir kullanıcı bekliyoruz
 
-        if (userError) {
-            console.error('Kullanıcı bilgileri alınamadı:', userError.message);
-            return [];
+        if (error) {
+            console.error('Kullanıcı alınamadı:', error.message);
+            return null;
         }
 
-        return friendsData;
-    }
-
-    async getMessages(contactId) {
-        const { data, error } = await this.supabase
-            .from('messages')
-            .select('*')
-            .eq('contact_id', contactId)
-            .order('created_at', { ascending: true });
-        return error ? [] : data;
+        return data;
     }
 }
-
-// Supabase ile database auth
-const SUPABASE_URL = 'https://jncqzwnqutwhuvkekrig.supabase.co'; // Buraya Supabase URL'nizi yazın
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuY3F6d25xdXR3aHV2a2VrcmlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA0NTQ4NTIsImV4cCI6MjA3NjAzMDg1Mn0.-tI6UgIjJ6Yg8oHDuyhDa4AmerI1c3BAzxzy_1g9Txs'; // Buraya API key'inizi yazın
-
-// Login form handler
-document.addEventListener('DOMContentLoaded', function () {
-    const loginForm = document.querySelector('.login-form');
-
-    if (loginForm) {
-        loginForm.addEventListener('submit', async function (e) {
-            e.preventDefault();
-
-            const username = this.querySelector('input[name="username"]').value;
-            const password = this.querySelector('input[name="password"]').value;
-            const submitBtn = this.querySelector('input[type="submit"]');
-
-            // Loading state
-            submitBtn.value = 'Giriş yapılıyor...';
-            submitBtn.disabled = true;
-
-            try {
-                // Supabase'den kullanıcı kontrolü
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/users?username=eq.${username}&password=eq.${password}`, {
-                    method: 'GET',
-                    headers: {
-                        'apikey': SUPABASE_KEY,
-                        'Authorization': `Bearer ${SUPABASE_KEY}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                const users = await response.json();
-
-                if (users && users.length > 0) {
-                    alert('Hoş geldin ' + users[0].username + '! Giriş başarılı!');
-                    // Başarılı giriş
-                    localStorage.setItem('user', JSON.stringify(users[0]));
-                    // Dashboard'a yönlendir
-                    window.location.href = 'dashboard.html';
-                } else {
-                    alert('Kullanıcı adı veya şifre hatalı!');
-                }
-
-            } catch (error) {
-                console.error('Database Error:', error);
-                alert('Database bağlantı hatası. Lütfen tekrar deneyin.');
-            } finally {
-                // Reset button
-                submitBtn.value = 'Giriş Yap';
-                submitBtn.disabled = false;
-            }
-        });
-    }
-});
