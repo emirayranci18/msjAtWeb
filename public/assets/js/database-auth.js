@@ -1,5 +1,3 @@
-
-// Database.js
 import { createClient } from 'https://esm.sh/@supabase/supabase-js';
 
 export class Database {
@@ -40,7 +38,7 @@ export class Database {
             const { data: relations, error: relError } = await this.supabase
                 .from('friends_list')
                 .select('*')
-                .or(`id_one.eq."${userId}",id_two.eq."${userId}"`);
+                .or(id_one.eq."${userId}", id_two.eq."${userId}");
 
             if (relError) {
                 console.error('Arkadaşlık verileri alınamadı:', relError.message);
@@ -98,7 +96,7 @@ export class Database {
             const { data, error } = await this.supabase
                 .from('messages')
                 .select('*')
-                .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUserId})`)
+                .or(and(sender_id.eq.${ currentUserId }, receiver_id.eq.${ friendId }), and(sender_id.eq.${ friendId }, receiver_id.eq.${ currentUserId }))
                 .order('sent_at', { ascending: true });
 
             if (error) {
@@ -131,5 +129,43 @@ export class Database {
         }
 
         return data;
+    }
+
+
+    // Yeni mesajı veritabanına ekler
+    async addMessage(senderId, receiverId, content) {
+        // Gerekli bilgilerin dolu olup olmadığını kontrol et
+        if (!senderId || !receiverId || !content) {
+            console.error("sendMessage: Gönderen, alıcı veya mesaj içeriği eksik!");
+            return null;
+        }
+
+        try {
+            const { data, error } = await this.supabase
+                .from('messages') // 'messages' tablosunu hedefle
+                .insert([
+                    {
+                        sender_id: senderId,
+                        receiver_id: receiverId,
+                        content: content
+                        // Not: sent_at sütunu genellikle veritabanı tarafından
+                        // 'DEFAULT now()' ile otomatik olarak doldurulur.
+                    }
+                ])
+                .select() // Eklenen veriyi geri döndür
+                .single(); // Sadece tek bir kayıt eklediğimiz için .single() kullanıyoruz
+
+            if (error) {
+                console.error('Mesaj gönderme hatası:', error.message);
+                return null;
+            }
+
+            console.log("Mesaj başarıyla veritabanına eklendi:", data);
+            return data; // Başarılı olursa eklenen mesajın verisini döndür
+
+        } catch (err) {
+            console.error("Beklenmeyen hata (sendMessage):", err);
+            return null;
+        }
     }
 }

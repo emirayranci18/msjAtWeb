@@ -1,10 +1,10 @@
-
 import { Database } from './database-auth.js';
 const db = new Database();
 
 class dashboard {
     constructor() {
         this.user = JSON.parse(localStorage.getItem('user'));
+        this.contactId;
     }
 
     async init() {
@@ -61,7 +61,7 @@ class dashboard {
 
             // Mesaj varsa ekle
             const lastMessageHtml = message
-                ? `<div class="contact-last-message">${message}</div>`
+                ? <div class="contact-last-message">${message}</div>
                 : "";
 
             infoDiv.innerHTML = `
@@ -106,7 +106,7 @@ class dashboard {
         const messageInput = document.querySelector('.message-input');
         const sendBtn = document.querySelector('.send-btn');
 
-        sendBtn.addEventListener('click', this.sendMessage);
+        sendBtn.addEventListener('click', () => this.sendMessage());
 
         messageInput.addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
@@ -126,6 +126,14 @@ class dashboard {
     selectContact(contactId) {
         this.updateChatHeader(contactId);
         this.loadMessages(contactId);
+        this.contactId = contactId;
+
+        if (this.messageSubscription) {
+            this.messageSubscription.unsubscribe();
+            console.log("Önceki mesaj dinleyicisi durduruldu.");
+        }
+
+        this.listenForNewMessages(contactId)
     }
 
     async updateChatHeader(contactId) {
@@ -172,7 +180,7 @@ class dashboard {
         const messagesContainer = document.querySelector('.messages-container');
 
         const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${type}`;
+        messageDiv.className = message ${ type };
 
         if (type === 'received') {
             messageDiv.innerHTML = `
@@ -207,56 +215,73 @@ class dashboard {
                 minute: '2-digit'
             });
 
-            addMessageToChat(text, 'sent', currentTime);
+            this.addMessageToChat(text, 'sent', currentTime);
             messageInput.value = '';
 
-            // Simüle edilmiş otomatik cevap (gerçek uygulamada database'e kaydedilecek)
-            setTimeout(() => {
-                const autoReplies = [
-                    'Anladım!',
-                    'Harika!',
-                    'Teşekkürler!',
-                    'Evet, haklısın.',
-                    'İlginç!',
-                    'Tamam, anladım.'
-                ];
+            db.addMessage(this.user.id, this.contactId, text)
 
-                const randomReply = autoReplies[Math.floor(Math.random() * autoReplies.length)];
-                addMessageToChat(randomReply, 'received', new Date().toLocaleTimeString('tr-TR', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                }));
-            }, 1000 + Math.random() * 2000);
         }
     }
 
-    filterContacts(searchTerm) {
-        const contacts = document.querySelectorAll('.contact-item');
+    listenForNewMessages(contactId) {
+        this.messageSubscription = db.supabase
+            .channel('public:messages') // 1. Dinlenecek kanalın adı (herhangi bir şey olabilir)
+            .on(
+                'postgres_changes', // 2. "Veritabanında bir değişiklik olduğunda dinle" diyoruz
+                {
+                    event: 'INSERT',      // 3. Sadece YENİ VERİ EKLENDİĞİNDE (yeni mesaj) haber ver
+                    schema: 'public',     // 4. 'public' şemasını dinle
+                    table: 'messages',    // 5. 'messages' tablosunu dinle
+                    filter: receiver_id = eq.${ this.user.id } 
+                },
+                // 7. YENİ MESAJ GELDİĞİNDE BU FONKSİYONU ÇALIŞTIR
+                (payload) => {
+    console.log('Yeni mesaj alındı!', payload);
+    const newMessage = payload.new; // Gelen yeni mesajın verisi
 
-        contacts.forEach(contact => {
-            const name = contact.querySelector('.contact-name').textContent.toLowerCase();
-            const lastMessage = contact.querySelector('.contact-last-message').textContent.toLowerCase();
+    // Gelen mesajın şu an konuştuğum kişiden geldiğini kontrol et
+    if (newMessage.sender_id == contactId) {
 
-            if (name.includes(searchTerm.toLowerCase()) || lastMessage.includes(searchTerm.toLowerCase())) {
-                contact.style.display = 'flex';
-            } else {
-                contact.style.display = 'none';
-            }
+        const time = new Date(newMessage.sent_at).toLocaleTimeString([], {
+            hour: '2-digit', minute: '2-digit'
         });
+
+        // OTOMATİK EKLEME BURADA YAPILIYOR!
+        // Gelen mesajın içeriğini alıp ekrana basan fonksiyonu çağırıyoruz.
+        this.addMessageToChat(newMessage.content, 'received', time);
+    }
+}
+            )
+            .subscribe(); // 8. Dinlemeyi resmen başlat
     }
 
-    logout() {
-        if (confirm('Çıkış yapmak istediğinizden emin misiniz?')) {
-            localStorage.removeItem('user');
-            window.location.href = 'index.html';
+filterContacts(searchTerm) {
+    const contacts = document.querySelectorAll('.contact-item');
+
+    contacts.forEach(contact => {
+        const name = contact.querySelector('.contact-name').textContent.toLowerCase();
+        const lastMessage = contact.querySelector('.contact-last-message').textContent.toLowerCase();
+
+        if (name.includes(searchTerm.toLowerCase()) || lastMessage.includes(searchTerm.toLowerCase())) {
+            contact.style.display = 'flex';
+        } else {
+            contact.style.display = 'none';
         }
-    }
+    });
+}
 
-    // Responsive için mobile chat toggle
-    toggleMobileChat() {
-        const chatPanel = document.querySelector('.chat-panel');
-        chatPanel.classList.toggle('active');
+logout() {
+    if (confirm('Çıkış yapmak istediğinizden emin misiniz?')) {
+        localStorage.removeItem('user');
+        window.location.href = 'index.html';
     }
+}
+
+// Responsive için mobile chat toggle
+toggleMobileChat() {
+    const chatPanel = document.querySelector('.chat-panel');
+    chatPanel.classList.toggle('active');
+}
 
 }
 
